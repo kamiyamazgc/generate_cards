@@ -111,7 +111,9 @@ def translate_full(text: str) -> str:
         translated.append(
             ask_openai(
                 "次の文章を日本語に正確に全文翻訳してください。\n\n" + chunk,
-                TRANS_TOK
+                TRANS_TOK,
+                system_prompt="You are a professional translator…",
+                temperature=0,
             )
         )
     return "\n\n".join(translated)
@@ -150,12 +152,22 @@ def extract_keywords_llm(summary: str, top_n: int = KEYWORD_TOP_N):
     resp = ask_openai(prompt, max_tokens=128)
     return [kw.strip() for kw in resp.split(",") if kw.strip()]
 
-def ask_openai(prompt: str, max_tokens: int, model: str | None = None) -> str:
+def ask_openai(
+    prompt: str,
+    max_tokens: int,
+    model: str | None = None,
+    system_prompt: str | None = None,
+    temperature: float = 0.3,
+) -> str:
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
     rsp = openai.chat.completions.create(
         model=model or MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         max_tokens=max_tokens,
-        temperature=0.3,
+        temperature=temperature,
     )
     return rsp.choices[0].message.content.strip()
 
