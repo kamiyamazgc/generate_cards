@@ -13,8 +13,9 @@ _URL リストまたは単一 URL から自動で「情報カード」Markdown �
    * YAML Front Matter 付き  
    * ファイル名: `YYYY‑MM‑DD‑<slug>.md`  
    * 保存先: `Library/<NDC>_<英語分類名>/`  
-4. **日次ダイジェスト `_daily_digest.md`** を上書き生成  
-   * 新規カードの「タイトル／公開日／要約」＋エラーログを掲載  
+4. **日次ダイジェスト** を `Library/_digests/<YYYY-MM-DD>.md` に保存
+   * 最新ファイルへの互換リンク `_daily_digest.md` も生成
+   * 新規カードの「タイトル／公開日／要約」＋エラーログを掲載
 
 ## インストール手順
 
@@ -37,7 +38,8 @@ python generate_cards.py https://example.com --key sk-...
 ```
 
 - 生成カードは `Library/` 以下に自動で振り分け  
-- ダイジェストは `Library/_daily_digest.md` に上書き
+- ダイジェストは `Library/_digests/` 以下に日付別保存
+  - 最新版は `Library/_daily_digest.md` としてリンク/コピー
 
 ## フォルダ構成例
 
@@ -48,6 +50,8 @@ Library/
   ├── 180_christianity/
   │   └── 2025-05-09-new-pope.md
   ├── _uncategorized/
+  ├── _digests/
+  │   └── 2025-05-10.md
   └── _daily_digest.md
 ```
 

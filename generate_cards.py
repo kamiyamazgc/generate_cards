@@ -30,8 +30,9 @@ TRANS_TOK   = 2048
 
 LIBRARY_DIR.mkdir(exist_ok=True)
 
-# --------- digest file constant ---------
-DIGEST_FILE = LIBRARY_DIR / "_daily_digest.md"
+# --------- digest directory ---------
+DIGEST_DIR = LIBRARY_DIR / "_digests"
+DIGEST_DIR.mkdir(exist_ok=True)
 
 with open("ndc10_3rd.json", encoding="utf-8") as f:
     _raw = json.load(f)
@@ -404,8 +405,19 @@ def _process_urls(urls: list[str]):
             lines += ["---", "## Error log", ""]
             for url, err in error_entries:
                 lines.append(f"- **{url}**: {err}")
-        DIGEST_FILE.write_text("\n".join(lines), encoding="utf-8")
-        print(f"📝 Digest written to {DIGEST_FILE}")
+
+        digest_path = DIGEST_DIR / f"{today}.md"
+        digest_path.write_text("\n".join(lines), encoding="utf-8")
+        print(f"📝 Digest written to {digest_path}")
+
+        latest_link = LIBRARY_DIR / "_daily_digest.md"
+        try:
+            if latest_link.exists() or latest_link.is_symlink():
+                latest_link.unlink()
+            latest_link.symlink_to(digest_path.name)
+        except Exception:
+            # Fall back to copying when symlink isn't supported
+            latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
 
 def generate_from_file(url_file: str):
     with open(url_file, encoding="utf-8") as f:
