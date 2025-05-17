@@ -17,6 +17,7 @@ import dateparser
 import openai
 from tqdm import tqdm
 from dateutil import parser as dtparser
+import tiktoken
 
 
 # ensure OpenAI key is configured later via CLI/env/prompt
@@ -27,6 +28,21 @@ LIBRARY_DIR = pathlib.Path("Library")
 MODEL_NAME  = "gpt-4o-mini"
 SUMMARY_TOK = 1000        # rough budget: adjust as you like
 TRANS_TOK   = 2048
+
+# explicit system prompt for translation to maintain consistent tone
+TRANS_SYSTEM_PROMPT = (
+    "You are a professional translator."
+    " Translate the user input to Japanese as accurately as possible."
+)
+
+try:
+    _ENC = tiktoken.encoding_for_model(MODEL_NAME)
+except Exception:
+    _ENC = tiktoken.get_encoding("cl100k_base")
+
+def count_tokens(text: str) -> int:
+    """Return approximate token count for the given text."""
+    return len(_ENC.encode(text))
 
 LIBRARY_DIR.mkdir(exist_ok=True)
 
@@ -90,16 +106,17 @@ def detect_lang(text: str) -> str:
     except LangDetectException:
         return "unknown"
 
-def chunk_text(text: str, max_chars: int = 4000):
-    """Greedy split on sentence boundaries so each chunk fits within token limits."""
+def chunk_text(text: str, max_tokens: int = TRANS_TOK // 2) -> list[str]:
+    """Greedy split on sentence boundaries so each chunk stays under `max_tokens`."""
     sentences = re.split(r'(?<=[。.!?！？])\s*', text)
     chunks, buf = [], ""
     for s in sentences:
-        if len(buf) + len(s) > max_chars and buf:
+        candidate = buf + s
+        if buf and count_tokens(candidate) > max_tokens:
             chunks.append(buf)
             buf = s
         else:
-            buf += s
+            buf = candidate
     if buf:
         chunks.append(buf)
     return chunks
@@ -107,11 +124,20 @@ def chunk_text(text: str, max_chars: int = 4000):
 def translate_full(text: str) -> str:
     """Translate arbitrarily long texts to Japanese by chunking."""
     translated = []
-    for chunk in chunk_text(text):
+    instr = "次の文章を日本語に正確に全文翻訳してください。\n\n"
+    instr_tok = count_tokens(instr)
+    sys_tok = count_tokens(TRANS_SYSTEM_PROMPT)
+    budget = TRANS_TOK - instr_tok - sys_tok
+    for chunk in chunk_text(text, max_tokens=budget):
+        prompt = instr + chunk
+        avail = TRANS_TOK - (count_tokens(prompt) + sys_tok)
+        max_out = max(1, avail)
         translated.append(
             ask_openai(
-                "次の文章を日本語に正確に全文翻訳してください。\n\n" + chunk,
-                TRANS_TOK
+                prompt,
+                max_out,
+                system_prompt=TRANS_SYSTEM_PROMPT,
+                temperature=0,
             )
         )
     return "\n\n".join(translated)
@@ -150,12 +176,24 @@ def extract_keywords_llm(summary: str, top_n: int = KEYWORD_TOP_N):
     resp = ask_openai(prompt, max_tokens=128)
     return [kw.strip() for kw in resp.split(",") if kw.strip()]
 
-def ask_openai(prompt: str, max_tokens: int, model: str | None = None) -> str:
+def ask_openai(
+    prompt: str,
+    max_tokens: int,
+    *,
+    system_prompt: str | None = None,
+    temperature: float = 0.3,
+    model: str | None = None,
+) -> str:
+    """Wrapper around OpenAI ChatCompletion API."""
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
     rsp = openai.chat.completions.create(
         model=model or MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         max_tokens=max_tokens,
-        temperature=0.3,
+        temperature=temperature,
     )
     return rsp.choices[0].message.content.strip()
 
