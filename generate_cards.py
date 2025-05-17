@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Create YAML-Front-Matter + Markdown "information cards" from a list of URLs.
-Cards are saved to ./Library/{YYYY-MM-DD-short-slug}.md
+Cards are saved to ./Library/<NDC>_<label_en>/{YYYY-MM-DD-slug}.md
 """
 
 import os, sys, json, datetime, pathlib, argparse, getpass
