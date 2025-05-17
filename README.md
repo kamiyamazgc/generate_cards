@@ -24,6 +24,7 @@ cd Cards
 python -m venv venv
 source venv/bin/activate     # Windows は .\venv\Scripts\activate
 pip install -r requirements.txt
+pytest -q  # 追加のテスト実行
 export OPENAI_API_KEY=sk-... # または実行時に --key
 ```
 
