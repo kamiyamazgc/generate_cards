@@ -320,7 +320,8 @@ def cli():
     parser = argparse.ArgumentParser(
         description="Generate YAML‑Front‑Matter + Markdown information cards from URLs."
     )
-    parser.add_argument("url_file", nargs="?", help="Path to txt file containing URLs (one per line)")
+    parser.add_argument("input", nargs="?",
+                        help="URL or path to txt file containing URLs (one per line)")
     parser.add_argument("--key", help="OpenAI API key (overrides env var)")
     parser.add_argument("-t", "--test", action="store_true",
                         help="Only test the supplied / detected API key and exit")
@@ -338,17 +339,18 @@ def cli():
             print(f"❌ API test failed: {e}")
         return
 
-    if not args.url_file:
-        parser.error("url_file is required unless --test is supplied.")
+    if not args.input:
+        parser.error("input (URL or file path) is required unless --test is supplied.")
 
-    generate_from_file(args.url_file)
+    if os.path.isfile(args.input) and not args.input.startswith("http"):
+        generate_from_file(args.input)
+    else:
+        generate_from_url(args.input)
 
 # ---------- orchestrator ---------------------------------------------------
 
-def generate_from_file(url_file: str):
+def _process_urls(urls: list[str]):
     access_date = datetime.date.today().isoformat()
-    with open(url_file, encoding="utf-8") as f:
-        urls = [u.strip() for u in f if u.strip()]
 
     new_entries = []   # collect (title, pub_date, ndc, summary, rel_path)
     error_entries = [] # collect (url, error_str)
@@ -404,6 +406,14 @@ def generate_from_file(url_file: str):
                 lines.append(f"- **{url}**: {err}")
         DIGEST_FILE.write_text("\n".join(lines), encoding="utf-8")
         print(f"📝 Digest written to {DIGEST_FILE}")
+
+def generate_from_file(url_file: str):
+    with open(url_file, encoding="utf-8") as f:
+        urls = [u.strip() for u in f if u.strip()]
+    _process_urls(urls)
+
+def generate_from_url(url: str):
+    _process_urls([url])
 
 if __name__ == "__main__":
     cli()
