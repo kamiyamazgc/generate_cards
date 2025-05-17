@@ -20,7 +20,7 @@ _URL リストから自動で「情報カード」Markdown を生成するツー
 
 ```bash
 git clone <repo-url>
-cd Cards
+cd generate_cards
 python -m venv venv
 source venv/bin/activate     # Windows は .\venv\Scripts\activate
 pip install -r requirements.txt
