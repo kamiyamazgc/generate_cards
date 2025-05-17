@@ -368,7 +368,8 @@ def generate_from_file(url_file: str):
             ))
             tqdm.write(f"✓ {fp}")
         except Exception as e:
-            tqdm.write(f"⚠️  {url}: {e}")
+            # Avoid variation selector character so logs don't get truncated
+            tqdm.write(f"⚠ {url}: {e}")
             error_entries.append((url, str(e)))
 
     # -------- write daily digest -----------
