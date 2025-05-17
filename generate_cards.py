@@ -378,7 +378,7 @@ def generate_from_file(url_file: str):
             try:
                 return dtparser.parse(d)
             except Exception:
-                return datetime.datetime.min
+                return datetime.datetime(1970, 1, 1)
         # enumerate to keep original order for tie‑break
         sorted_entries = sorted(
             enumerate(new_entries),
