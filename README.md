@@ -1,5 +1,5 @@
 # Card‑Maker 📚✂️  
-_URL リストから自動で「情報カード」Markdown を生成するツール_
+_URL リストまたは単一 URL から自動で「情報カード」Markdown を生成するツール_
 
 ## 概要
 
@@ -32,6 +32,8 @@ export OPENAI_API_KEY=sk-... # または実行時に --key
 ```bash
 # urls.txt に URL を 1 行ずつ
 python generate_cards.py urls.txt --key sk-...
+# 単一 URL を直接指定
+python generate_cards.py https://example.com --key sk-...
 ```
 
 - 生成カードは `Library/` 以下に自動で振り分け  
