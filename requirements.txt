@@ -7,3 +7,4 @@ dateparser>=1.2
 openai>=1.25
 tqdm>=4.66
 python-dateutil>=2.9
+tiktoken>=0.7

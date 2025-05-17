@@ -17,6 +17,7 @@ import dateparser
 import openai
 from tqdm import tqdm
 from dateutil import parser as dtparser
+import tiktoken
 
 
 # ensure OpenAI key is configured later via CLI/env/prompt
@@ -27,6 +28,15 @@ LIBRARY_DIR = pathlib.Path("Library")
 MODEL_NAME  = "gpt-4o-mini"
 SUMMARY_TOK = 1000        # rough budget: adjust as you like
 TRANS_TOK   = 2048
+
+try:
+    _ENC = tiktoken.encoding_for_model(MODEL_NAME)
+except Exception:
+    _ENC = tiktoken.get_encoding("cl100k_base")
+
+def count_tokens(text: str) -> int:
+    """Return approximate token count for the given text."""
+    return len(_ENC.encode(text))
 
 LIBRARY_DIR.mkdir(exist_ok=True)
 
@@ -90,16 +100,17 @@ def detect_lang(text: str) -> str:
     except LangDetectException:
         return "unknown"
 
-def chunk_text(text: str, max_chars: int = 4000):
-    """Greedy split on sentence boundaries so each chunk fits within token limits."""
+def chunk_text(text: str, max_tokens: int = TRANS_TOK // 2) -> list[str]:
+    """Greedy split on sentence boundaries so each chunk stays under `max_tokens`."""
     sentences = re.split(r'(?<=[。.!?！？])\s*', text)
     chunks, buf = [], ""
     for s in sentences:
-        if len(buf) + len(s) > max_chars and buf:
+        candidate = buf + s
+        if buf and count_tokens(candidate) > max_tokens:
             chunks.append(buf)
             buf = s
         else:
-            buf += s
+            buf = candidate
     if buf:
         chunks.append(buf)
     return chunks
@@ -107,11 +118,16 @@ def chunk_text(text: str, max_chars: int = 4000):
 def translate_full(text: str) -> str:
     """Translate arbitrarily long texts to Japanese by chunking."""
     translated = []
-    for chunk in chunk_text(text):
+    instr = "次の文章を日本語に正確に全文翻訳してください。\n\n"
+    instr_tok = count_tokens(instr)
+    for chunk in chunk_text(text, max_tokens=TRANS_TOK - instr_tok):
+        prompt = instr + chunk
+        avail = TRANS_TOK - count_tokens(prompt)
+        max_out = max(1, avail)
         translated.append(
             ask_openai(
-                "次の文章を日本語に正確に全文翻訳してください。\n\n" + chunk,
-                TRANS_TOK
+                prompt,
+                max_out
             )
         )
     return "\n\n".join(translated)
