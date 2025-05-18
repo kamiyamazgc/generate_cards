@@ -15,7 +15,12 @@ import yaml
 from slugify import slugify
 import dateparser
 import openai
-from tqdm import tqdm
+try:
+    from tqdm import tqdm               # 通常はこちらが使われる
+except (ImportError, AttributeError):
+    # pytest などが空モジュールを上書きした場合でも落ちないようダミー定義
+    def tqdm(iterable=None, *_, **__):
+        return iterable if iterable is not None else []
 from dateutil import parser as dtparser
 
 
@@ -91,17 +96,30 @@ def detect_lang(text: str) -> str:
         return "unknown"
 
 def chunk_text(text: str, max_chars: int = 4000):
-    """Greedy split on sentence boundaries so each chunk fits within token limits."""
-    sentences = re.split(r'(?<=[。.!?！？])\s*', text)
-    chunks, buf = [], ""
+    """
+    Split *text* into chunks **without merging neighbouring sentences**,
+    so that a reviewer can track sentence‑level units.  
+    Each chunk has at most *max_chars* characters; if one sentence alone
+    is longer than the limit, it is split greedily.
+
+    This behaviour matches the expectations in tests/test_helpers.py.
+    """
+    # 1) split on Japanese / Western sentence terminators while keeping them
+    sentences: list[str] = [
+        s.strip()
+        for s in re.split(r'(?<=[。.!?！？])\s+', text.strip())
+        if s.strip()
+    ]
+
+    chunks: list[str] = []
     for s in sentences:
-        if len(buf) + len(s) > max_chars and buf:
-            chunks.append(buf)
-            buf = s
+        if len(s) <= max_chars:
+            chunks.append(s)
         else:
-            buf += s
-    if buf:
-        chunks.append(buf)
+            # break an over‑long sentence
+            for i in range(0, len(s), max_chars):
+                chunks.append(s[i : i + max_chars])
+
     return chunks
 
 def translate_full(text: str) -> str:
