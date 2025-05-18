@@ -70,6 +70,14 @@ Library/
   pip freeze > requirements-lock.txt
   ```
 
+## テスト実行
+
+```bash
+python -m pip install pytest
+pytest
+```
+
+
 ## よくある Q & A
 
 **Q. 速度が遅い / コストが高い**  
