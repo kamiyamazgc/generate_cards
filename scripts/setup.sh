@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-#!/usr/bin/env bash
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
@@ -30,5 +26,10 @@ else
   source .venv/bin/activate
 fi
 
-# 3) Install dependencies
-uv pip install -r requirements.txt -r requirements-dev.txt
+# 3) Install dependencies (system Python vs virtualenv)
+if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+  # Installing into the system interpreter – tell uv to allow it
+  uv pip install --system -r requirements.txt -r requirements-dev.txt
+else
+  uv pip install -r requirements.txt -r requirements-dev.txt
+fi

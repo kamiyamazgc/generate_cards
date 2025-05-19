@@ -316,7 +316,15 @@ def build_card(meta: dict, url: str, access_date: str, *, skip_translation: bool
     parts = ["---", front_matter, "---", ""]
 
     if perform_translation:
-        parts += ["## Translation （和訳）", "", translation]
+        parts += [
+            "## Translation （和訳）",
+            "",
+            translation,
+            "",
+            "## Original Text",
+            "",
+            original_text,
+        ]
     else:
         parts += ["## Original Text", "", original_text]
 
