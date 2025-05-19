@@ -12,7 +12,23 @@ import httpx
 import trafilatura
 import re
 from langdetect import detect, LangDetectException
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+if not (yaml and hasattr(yaml, "safe_dump")):
+    def _yaml_safe_dump(data, allow_unicode=True, sort_keys=False, width=None):
+        import json
+        return json.dumps(data, ensure_ascii=not allow_unicode)
+
+    class _YAMLStub:
+        safe_dump = staticmethod(_yaml_safe_dump)
+
+    if yaml is None:
+        yaml = _YAMLStub()
+    else:
+        yaml.safe_dump = _yaml_safe_dump
 from slugify import slugify
 import dateparser
 import openai
@@ -22,6 +38,7 @@ except (ImportError, AttributeError):
     # pytest などが空モジュールを上書きした場合でも落ちないようダミー定義
     def tqdm(iterable=None, *_, **__):
         return iterable if iterable is not None else []
+    tqdm.write = lambda *a, **k: None
 from dateutil import parser as dtparser
 
 
@@ -419,7 +436,7 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
                 meta["title"],
                 meta["publication_date"],
                 meta.get("ndc", ""),
-                meta["summary"],
+                meta.get("summary", ""),
                 rel
             ))
             tqdm.write(f"✓ {fp}")
@@ -433,7 +450,8 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
         today = datetime.date.today().isoformat()
         def _dt(d):
             try:
-                return dtparser.parse(d)
+                res = dtparser.parse(d)
+                return res if hasattr(res, "timestamp") else datetime.datetime(1970, 1, 1)
             except Exception:
                 return datetime.datetime(1970, 1, 1)
         # enumerate to keep original order for tie‑break
