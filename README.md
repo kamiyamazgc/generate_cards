@@ -22,11 +22,21 @@ _URL リストまたは単一 URL から自動で「情報カード」Markdown �
 ```bash
 git clone <repo-url>
 cd generate_cards
+
+# ▼ Python 3.8 以上推奨（Codex CI は自動で 3.11 を使用）
 python -m venv venv
-source venv/bin/activate     # Windows は .\venv\Scripts\activate
-pip install -r requirements.txt
-export OPENAI_API_KEY=sk-... # または実行時に --key
+source venv/bin/activate      # Windows は .\venv\Scripts\activate
+
+# 本番 + 開発依存を一括インストール
+pip install -r requirements.txt -r requirements-dev.txt
+
+export OPENAI_API_KEY=sk-...  # または実行時に --key
 ```
+
+> **Codex CI での実行**  
+> `scripts/setup.sh` がシステム Python を検知し、3.8 未満の場合は  
+> `uv` 経由で **Python 3.11** と仮想環境 `.venv/` を自動生成します。  
+> ローカルでも同じ環境を再現したい場合は `bash scripts/setup.sh` を実行してください。
 
 ## 使い方
 
@@ -68,6 +78,7 @@ Library/
 ## 依存ライブラリ管理
 
 - 最小依存は `requirements.txt`  
+- 開発用パッケージは requirements-dev.txt に分離しています。
 - 環境固定したい場合は  
   ```bash
   pip freeze > requirements-lock.txt
@@ -89,8 +100,13 @@ A. 要約とキーワードを同時プロンプトにする、URL を非同期�
 **Q. NDC 分類が空欄になる**  
 A. LLM が判断を保留した場合です。手動で追記するか、ガイドラインを追加してください。
 
-**Q. 英語分類名が変？**  
+**Q. 英語分類名が変？**
 A. `ndc10_3rd.json` の `"en"` フィールドを編集するとフォルダ名に反映されます。
+
+**Q. API エラーで処理が止まる**
+A. `openai.chat.completions.create` は `openai.APIError` または
+`httpx.HTTPError` が発生した場合、指数バックオフで最大 3 回リトライします。
+それでも失敗する場合は例外がそのまま伝播します。
 
 ---
 
