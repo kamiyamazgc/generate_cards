@@ -460,6 +460,14 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
                 lines.append(f"- **{url}**: {err}")
 
         digest_path = DIGEST_DIR / f"{today}.md"
+        if digest_path.exists():
+            idx = 1
+            while True:
+                candidate = DIGEST_DIR / f"{today}-{idx}.md"
+                if not candidate.exists():
+                    digest_path = candidate
+                    break
+                idx += 1
         digest_path.write_text("\n".join(lines), encoding="utf-8")
         print(f"📝 Digest written to {digest_path}")
 
@@ -467,7 +475,7 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
         try:
             if latest_link.exists() or latest_link.is_symlink():
                 latest_link.unlink()
-            latest_link.symlink_to(digest_path.name)
+            latest_link.symlink_to(pathlib.Path("_digests") / digest_path.name)
         except Exception:
             # Fall back to copying when symlink isn't supported
             latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
