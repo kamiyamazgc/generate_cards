@@ -33,3 +33,31 @@ if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 else
   uv pip install -r requirements.txt -r requirements-dev.txt
 fi
+
+# ---------------------------------------------------------------------------
+# 4) Fallback: offline wheel‑house install
+#
+# Codex sandbox sometimes runs with outbound network disabled. In that case
+# the previous uv‑pip step fails with “No route to host”.  If we detect that
+# failure – or if pytest is still missing – try to install from a local
+# wheel‑house directory committed to the repo:  .wheels/
+# ---------------------------------------------------------------------------
+set +e
+python - <<'PY'
+import importlib.util, sys
+missing = [m for m in ("pytest", "httpx") if importlib.util.find_spec(m) is None]
+sys.exit(0 if not missing else 1)
+PY
+need_offline=$?
+set -e
+
+if [[ "$need_offline" -ne 0 ]]; then
+  wheel_dir="$(dirname "$0")/../.wheels"
+  if [[ -d "$wheel_dir" ]]; then
+    echo "🔄  Network install failed; installing from local wheel‑house"
+    uv pip install --no-index --find-links "$wheel_dir" -r requirements.txt -r requirements-dev.txt
+  else
+    echo "❌ Dependencies missing and .wheels/ not found.  Aborting."
+    exit 1
+  fi
+fi
