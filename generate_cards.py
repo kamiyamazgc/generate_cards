@@ -467,7 +467,7 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
         try:
             if latest_link.exists() or latest_link.is_symlink():
                 latest_link.unlink()
-            latest_link.symlink_to(digest_path.name)
+            latest_link.symlink_to(pathlib.Path("_digests") / digest_path.name)
         except Exception:
             # Fall back to copying when symlink isn't supported
             latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
