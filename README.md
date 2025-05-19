@@ -35,6 +35,8 @@ export OPENAI_API_KEY=sk-... # または実行時に --key
 python generate_cards.py urls.txt --key sk-...
 # 単一 URL を直接指定
 python generate_cards.py https://example.com --key sk-...
+# 翻訳せずに原文だけ保存したい場合
+python generate_cards.py https://example.com --no-translate --key sk-...
 ```
 
 - 生成カードは `Library/` 以下に自動で振り分け  
@@ -61,6 +63,7 @@ Library/
 |------------------|-------------------------------------|
 | `--key`          | OpenAI API キーを直接指定           |
 | `--test` / `-t`  | API 接続確認（“pong” 応答）だけ実行 |
+| `--no-translate` | 非日本語でも翻訳せず原文だけ保存     |
 
 ## 依存ライブラリ管理
 
