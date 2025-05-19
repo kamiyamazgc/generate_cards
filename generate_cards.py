@@ -5,6 +5,7 @@ Cards are saved to ./Library/<NDC>_<label_en>/{YYYY-MM-DD-slug}.md
 """
 
 import os, sys, json, datetime, pathlib, argparse, getpass
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -181,13 +182,24 @@ def ask_openai(
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
-    rsp = openai.chat.completions.create(
-        model=model or MODEL_NAME,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return rsp.choices[0].message.content.strip()
+
+    attempts = 0
+    wait = 1.0
+    while True:
+        try:
+            rsp = openai.chat.completions.create(
+                model=model or MODEL_NAME,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            return rsp.choices[0].message.content.strip()
+        except (openai.APIError, httpx.HTTPError):
+            attempts += 1
+            if attempts >= 3:
+                raise
+            time.sleep(wait)
+            wait *= 2
 
 # ---------- NDC classification via LLM -----------------------------------
 
