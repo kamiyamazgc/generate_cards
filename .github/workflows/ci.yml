@@ -7,9 +7,5 @@ jobs:
       - uses: actions/setup-python@v5        # ← 追加
         with:
           python-version: '3.12'
-
-      # プロジェクトを編集インストール（パス解決用）
-      - run: python -m pip install -e .
-
       - run: python -m pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q
