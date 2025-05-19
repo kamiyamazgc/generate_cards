@@ -248,7 +248,7 @@ def classify_ndc_llm(title: str, summary: str) -> str:
     )
     return _ask(choice_prompt)
 
-def build_card(meta: dict, url: str, access_date: str) -> str:
+def build_card(meta: dict, url: str, access_date: str, *, skip_translation: bool = False) -> str:
     """Return full markdown string for one card."""
     domain = urlparse(url).netloc
     # ----- NDC classification
@@ -257,6 +257,7 @@ def build_card(meta: dict, url: str, access_date: str) -> str:
 
     source_lang = detect_lang(meta['text'][:1000])
     needs_translation = source_lang != "ja"
+    perform_translation = needs_translation and not skip_translation
 
     # summary: always Japanese, regardless of source language
     summary = ask_openai(
@@ -278,7 +279,7 @@ def build_card(meta: dict, url: str, access_date: str) -> str:
     original_text = tidy_markdown_para(meta['text'])
     translation = (
         tidy_markdown_para(translate_full(meta['text']))
-        if needs_translation else ""
+        if perform_translation else ""
     )
 
     front = {
@@ -292,7 +293,7 @@ def build_card(meta: dict, url: str, access_date: str) -> str:
         "ndc": ndc_stub,
         "keywords": keywords_combined,
         "summary": summary,
-        "has_translation": needs_translation,
+        "has_translation": perform_translation,
     }
     front_matter = yaml.safe_dump(
         front,
@@ -302,10 +303,10 @@ def build_card(meta: dict, url: str, access_date: str) -> str:
     ).strip()
     parts = ["---", front_matter, "---", ""]
 
-    if needs_translation:
-        parts += ["## Translation （和訳）", "", translation, ""]
-
-    parts += ["## Original Text", "", original_text]
+    if perform_translation:
+        parts += ["## Translation （和訳）", "", translation]
+    else:
+        parts += ["## Original Text", "", original_text]
 
     # --- ALWAYS return str ---
     body = "\n".join(parts).lstrip()
@@ -356,6 +357,8 @@ def cli():
     parser.add_argument("--key", help="OpenAI API key (overrides env var)")
     parser.add_argument("-t", "--test", action="store_true",
                         help="Only test the supplied / detected API key and exit")
+    parser.add_argument("--no-translate", action="store_true",
+                        help="Skip machine translation of non-Japanese text")
     args = parser.parse_args()
 
     # resolve API key
@@ -374,13 +377,13 @@ def cli():
         parser.error("input (URL or file path) is required unless --test is supplied.")
 
     if os.path.isfile(args.input) and not args.input.startswith("http"):
-        generate_from_file(args.input)
+        generate_from_file(args.input, skip_translation=args.no_translate)
     else:
-        generate_from_url(args.input)
+        generate_from_url(args.input, skip_translation=args.no_translate)
 
 # ---------- orchestrator ---------------------------------------------------
 
-def _process_urls(urls: list[str]):
+def _process_urls(urls: list[str], skip_translation: bool = False):
     access_date = datetime.date.today().isoformat()
 
     new_entries = []   # collect (title, pub_date, ndc, summary, rel_path)
@@ -389,7 +392,7 @@ def _process_urls(urls: list[str]):
         try:
             html  = fetch_html(url)
             meta  = extract_meta(url, html)
-            card  = build_card(meta, url, access_date)
+            card  = build_card(meta, url, access_date, skip_translation=skip_translation)
             fp    = save_card(card, meta)
             rel = fp.relative_to(LIBRARY_DIR)
             new_entries.append((
@@ -449,13 +452,13 @@ def _process_urls(urls: list[str]):
             # Fall back to copying when symlink isn't supported
             latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-def generate_from_file(url_file: str):
+def generate_from_file(url_file: str, *, skip_translation: bool = False):
     with open(url_file, encoding="utf-8") as f:
         urls = [u.strip() for u in f if u.strip()]
-    _process_urls(urls)
+    _process_urls(urls, skip_translation=skip_translation)
 
-def generate_from_url(url: str):
-    _process_urls([url])
+def generate_from_url(url: str, *, skip_translation: bool = False):
+    _process_urls([url], skip_translation=skip_translation)
 
 if __name__ == "__main__":
     cli()
