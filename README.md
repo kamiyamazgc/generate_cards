@@ -29,6 +29,7 @@ source venv/bin/activate      # Windows は .\venv\Scripts\activate
 
 # 本番 + 開発依存を一括インストール
 pip install -r requirements.txt -r requirements-dev.txt
+# YouTube URL を処理する場合、`yt-dlp` と `openai-whisper` もインストールされます。
 
 export OPENAI_API_KEY=sk-...  # または実行時に --key
 ```
@@ -51,9 +52,10 @@ python generate_cards.py https://example.com --key sk-...
 python generate_cards.py https://example.com --no-translate --key sk-...
 ```
 
-- 生成カードは `Library/` 以下に自動で振り分け  
+- 生成カードは `Library/` 以下に自動で振り分け
 - ダイジェストは `Library/_digests/` 以下に日付別保存
   - 最新版は `Library/_daily_digest.md` としてリンク/コピー
+- YouTube URL を指定した場合は音声を取得し、Whisper で文字起こし後にカード化
 
 ## フォルダ構成例
 
