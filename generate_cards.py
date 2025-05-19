@@ -460,6 +460,14 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
                 lines.append(f"- **{url}**: {err}")
 
         digest_path = DIGEST_DIR / f"{today}.md"
+        if digest_path.exists():
+            idx = 1
+            while True:
+                candidate = DIGEST_DIR / f"{today}-{idx}.md"
+                if not candidate.exists():
+                    digest_path = candidate
+                    break
+                idx += 1
         digest_path.write_text("\n".join(lines), encoding="utf-8")
         print(f"📝 Digest written to {digest_path}")
 
