@@ -10,6 +10,9 @@ from urllib.parse import urlparse
 import shutil
 import tempfile
 
+# Allow MPS backend to fall back to CPU op‑by‑op instead of raising errors
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import httpx
 import trafilatura
 import re
@@ -181,7 +184,7 @@ def is_youtube_url(url: str) -> bool:
     netloc = urlparse(url).netloc.lower()
     return "youtube.com" in netloc or "youtu.be" in netloc
 
-def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict]:
+def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict, int]:
     if yt_dlp is None:
         raise RuntimeError("yt_dlp not available")
     ydl_opts = {
@@ -192,6 +195,7 @@ def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Pa
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
+        duration = int(info.get("duration", 0))  # seconds
     audio_path = out_dir / f"{info['id']}.{info['ext']}"
     meta = {
         "title": info.get("title") or "Untitled",
@@ -207,21 +211,70 @@ def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Pa
             meta["publication_date"] = dt.isoformat()
         except Exception:
             pass
-    return audio_path, meta
+    return audio_path, meta, duration
 
-def _transcribe_audio(path: pathlib.Path) -> tuple[str, str]:
+def _transcribe_audio(path: pathlib.Path, *, force_cpu: bool = False) -> tuple[str, str]:
+    """
+    Transcribe *path* with OpenAI Whisper.
+    VAD とループ抑止パラメータを有効化して繰り返し幻覚を低減。
+
+    Returns (text, language).  Device selection order:
+    CUDA → MPS → CPU unless `force_cpu` is True.
+    Any RuntimeError on CUDA/MPS triggers automatic CPU retry.
+    Long files are processed in one pass (manual chunking could be added later).
+    """
     if whisper is None:
         raise RuntimeError("whisper not available")
-    model = whisper.load_model("base")
-    result = model.transcribe(str(path))
+
+    # build preferred‑device chain
+    device_chain: list[str] = []
+    if not force_cpu:
+        if torch is not None and torch.cuda.is_available():
+            device_chain.append("cuda")
+        if torch is not None and getattr(torch.backends, "mps", None) \
+           and torch.backends.mps.is_available():
+            device_chain.append("mps")
+    device_chain.append("cpu")  # always have CPU fallback
+
+    last_err: RuntimeError | None = None
+    for dev in device_chain:
+        try:
+            tqdm.write(f"[Whisper] loading model on {dev} …")
+            model = whisper.load_model("base", device=dev)
+            if dev == "mps":
+                model = model.float()           # FP32 only on MPS
+            fp16 = dev == "cuda"
+
+            # Decoding options to suppress repetition & skip silence
+            decode_opts = dict(
+                fp16=fp16,
+                compression_ratio_threshold=2.4,
+                logprob_threshold=-1.0,
+                no_speech_threshold=0.5,
+                condition_on_previous_text=False,
+                temperature=[0.0, 0.2, 0.4],   # fallback temperatures
+            )
+
+            result = model.transcribe(str(path), **decode_opts)
+            break  # success
+        except RuntimeError as e:
+            last_err = e
+            tqdm.write(f"[Whisper] {dev} failed → trying next device")
+            continue
+    else:
+        # exhausted all devices
+        raise last_err or RuntimeError("transcription failed")
+
     text = result.get("text", "").strip()
     lang = result.get("language", "unknown")
     return text, lang
 
 def process_youtube_url(url: str) -> tuple[dict, pathlib.Path]:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="yt_"))
-    audio_path, meta = _download_youtube_audio(url, tmp)
-    text, lang = _transcribe_audio(audio_path)
+    audio_path, meta, dur = _download_youtube_audio(url, tmp)
+    # force CPU for videos longer than 30 min
+    force_cpu = dur > 30 * 60
+    text, lang = _transcribe_audio(audio_path, force_cpu=force_cpu)
     meta["text"] = text
     meta["source_language"] = lang
     return meta, audio_path
