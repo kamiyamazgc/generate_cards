@@ -23,7 +23,7 @@ _URL リストまたは単一 URL から自動で「情報カード」Markdown �
 git clone <repo-url>
 cd generate_cards
 
-# ▼ Python 3.8 以上推奨（Codex CI は自動で 3.11 を使用）
+# ▼ Python 3.11.x 必須（Whisper の動作に必要）
 python -m venv venv
 source venv/bin/activate      # Windows は .\venv\Scripts\activate
 
