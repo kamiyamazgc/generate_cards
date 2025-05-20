@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import shutil
 import tempfile
 
+
 # Allow MPS backend to fall back to CPU op‑by‑op instead of raising errors
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
@@ -54,6 +55,7 @@ except ImportError:
 
 try:
     from tqdm import tqdm  # 通常はこちらが使われる
+
 except (ImportError, AttributeError):
     # pytest などが空モジュールを上書きした場合でも落ちないようダミー定義
     def tqdm(iterable=None, *_, **__):
@@ -185,6 +187,7 @@ def is_youtube_url(url: str) -> bool:
     return "youtube.com" in netloc or "youtu.be" in netloc
 
 def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict, int]:
+
     if yt_dlp is None:
         raise RuntimeError("yt_dlp not available")
     ydl_opts = {
@@ -195,7 +198,9 @@ def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Pa
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
+
         duration = int(info.get("duration", 0))  # seconds
+
     audio_path = out_dir / f"{info['id']}.{info['ext']}"
     meta = {
         "title": info.get("title") or "Untitled",
@@ -211,6 +216,7 @@ def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Pa
             meta["publication_date"] = dt.isoformat()
         except Exception:
             pass
+
     return audio_path, meta, duration
 
 def _transcribe_audio(path: pathlib.Path, *, force_cpu: bool = False) -> tuple[str, str]:
@@ -271,10 +277,12 @@ def _transcribe_audio(path: pathlib.Path, *, force_cpu: bool = False) -> tuple[s
 
 def process_youtube_url(url: str) -> tuple[dict, pathlib.Path]:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="yt_"))
+
     audio_path, meta, dur = _download_youtube_audio(url, tmp)
     # force CPU for videos longer than 30 min
     force_cpu = dur > 30 * 60
     text, lang = _transcribe_audio(audio_path, force_cpu=force_cpu)
+
     meta["text"] = text
     meta["source_language"] = lang
     return meta, audio_path
