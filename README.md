@@ -34,10 +34,12 @@ pip install -r requirements.txt -r requirements-dev.txt
 export OPENAI_API_KEY=sk-...  # または実行時に --key
 ```
 
-> **Codex CI での実行**  
-> `scripts/setup.sh` がシステム Python を検知し、3.8 未満の場合は  
-> `uv` 経由で **Python 3.11** と仮想環境 `.venv/` を自動生成します。  
+> **Codex CI での実行**
+> `scripts/setup.sh` がシステム Python を検知し、3.8 未満の場合は
+> `uv` 経由で **Python 3.11** と仮想環境 `.venv/` を自動生成します。
 > ローカルでも同じ環境を再現したい場合は `bash scripts/setup.sh` を実行してください。
+
+Whisper を使用する音声書き起こしでは、CUDA 対応 GPU や Apple Silicon の MPS が利用可能な場合は自動でそちらを使用します。
 
 ## 使い方
 
