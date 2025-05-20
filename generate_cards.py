@@ -526,8 +526,11 @@ def cli():
     parser = argparse.ArgumentParser(
         description="Generate YAML‑Front‑Matter + Markdown information cards from URLs."
     )
-    parser.add_argument("input", nargs="?",
-                        help="URL or path to txt file containing URLs (one per line)")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        help="URL, path to txt file of URLs, or local markdown file",
+    )
     parser.add_argument("--key", help="OpenAI API key (overrides env var)")
     parser.add_argument("-t", "--test", action="store_true",
                         help="Only test the supplied / detected API key and exit")
@@ -551,7 +554,10 @@ def cli():
         parser.error("input (URL or file path) is required unless --test is supplied.")
 
     if os.path.isfile(args.input) and not args.input.startswith("http"):
-        generate_from_file(args.input, skip_translation=args.no_translate)
+        if args.input.lower().endswith(".md"):
+            generate_from_markdown(args.input, skip_translation=args.no_translate)
+        else:
+            generate_from_file(args.input, skip_translation=args.no_translate)
     else:
         generate_from_url(args.input, skip_translation=args.no_translate)
 
@@ -643,10 +649,86 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
             # Fall back to copying when symlink isn't supported
             latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
 
+def _process_markdown_files(paths: list[str], skip_translation: bool = False):
+    access_date = datetime.date.today().isoformat()
+
+    new_entries = []
+    error_entries = []
+    for p in tqdm(paths, desc="Processing"):
+        try:
+            text = pathlib.Path(p).read_text(encoding="utf-8")
+            meta = {
+                "title": pathlib.Path(p).stem,
+                "publication_date": "",
+                "author_family": "",
+                "author_given": "",
+                "keywords": [],
+                "text": text,
+            }
+            card = build_card(meta, pathlib.Path(p).resolve().as_uri(), access_date, skip_translation=skip_translation)
+            fp = save_card(card, meta)
+            rel = fp.relative_to(LIBRARY_DIR)
+            new_entries.append((meta["title"], meta["publication_date"], meta.get("ndc", ""), meta.get("summary", ""), rel))
+            tqdm.write(f"✓ {fp}")
+        except Exception as e:
+            tqdm.write(f"⚠ {p}: {e}")
+            error_entries.append((p, str(e)))
+
+    if new_entries:
+        today = datetime.date.today().isoformat()
+
+        def _dt(d):
+            try:
+                res = dtparser.parse(d)
+                return res if hasattr(res, "timestamp") else datetime.datetime(1970, 1, 1)
+            except Exception:
+                return datetime.datetime(1970, 1, 1)
+
+        sorted_entries = sorted(
+            enumerate(new_entries),
+            key=lambda t: (-_dt(t[1][1]).timestamp(), t[1][2], t[0]),
+        )
+        lines = [f"# New Cards created on {today}", ""]
+        for _, (title, pubdate, ndc, summ, rel) in sorted_entries:
+            lines += [
+                f"### [{title}]({rel})",
+                f"- Publication date: {pubdate or '―'}",
+                "",
+                tidy_markdown_para(summ),
+                "",
+            ]
+        if error_entries:
+            lines += ["---", "## Error log", ""]
+            for path, err in error_entries:
+                lines.append(f"- **{path}**: {err}")
+
+        digest_path = DIGEST_DIR / f"{today}.md"
+        if digest_path.exists():
+            idx = 1
+            while True:
+                candidate = DIGEST_DIR / f"{today}-{idx}.md"
+                if not candidate.exists():
+                    digest_path = candidate
+                    break
+                idx += 1
+        digest_path.write_text("\n".join(lines), encoding="utf-8")
+        print(f"📝 Digest written to {digest_path}")
+
+        latest_link = LIBRARY_DIR / "_daily_digest.md"
+        try:
+            if latest_link.exists() or latest_link.is_symlink():
+                latest_link.unlink()
+            latest_link.symlink_to(pathlib.Path("_digests") / digest_path.name)
+        except Exception:
+            latest_link.write_text(digest_path.read_text(encoding="utf-8"), encoding="utf-8")
+
 def generate_from_file(url_file: str, *, skip_translation: bool = False):
     with open(url_file, encoding="utf-8") as f:
         urls = [u.strip() for u in f if u.strip()]
     _process_urls(urls, skip_translation=skip_translation)
+
+def generate_from_markdown(md_file: str, *, skip_translation: bool = False):
+    _process_markdown_files([md_file], skip_translation=skip_translation)
 
 def generate_from_url(url: str, *, skip_translation: bool = False):
     _process_urls([url], skip_translation=skip_translation)
