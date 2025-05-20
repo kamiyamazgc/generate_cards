@@ -33,6 +33,14 @@ from slugify import slugify
 import dateparser
 import openai
 try:
+    import whisper
+except ImportError:
+    whisper = None
+try:
+    import torch
+except ImportError:
+    torch = None
+try:
     from tqdm import tqdm               # 通常はこちらが使われる
 except (ImportError, AttributeError):
     # pytest などが空モジュールを上書きした場合でも落ちないようダミー定義
@@ -104,6 +112,26 @@ def extract_meta(url: str, html: str) -> dict:
         "keywords": keywords,
         "text": d.get("text") or "",
     }
+
+# ---------- audio transcription helper -----------------------------------
+
+def _transcribe_audio(path: pathlib.Path) -> tuple[str, str]:
+    """Return (language, text) by running Whisper on the best available device."""
+    if whisper is None:
+        raise RuntimeError("whisper not available")
+
+    if torch is None:
+        device = "cpu"
+    else:
+        device = (
+            "cuda"
+            if torch.cuda.is_available()
+            else ("mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu")
+        )
+
+    model = whisper.load_model("base", device=device)
+    result = model.transcribe(str(path))
+    return result.get("language", ""), result.get("text", "").strip()
 
 # ---------- language & chunk helpers -------------------------------------
 
