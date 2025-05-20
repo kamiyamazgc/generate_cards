@@ -7,6 +7,8 @@ Cards are saved to ./Library/<NDC>_<label_en>/{YYYY-MM-DD-slug}.md
 import os, sys, json, datetime, pathlib, argparse, getpass
 import time
 from urllib.parse import urlparse
+import shutil
+import tempfile
 
 import httpx
 import trafilatura
@@ -32,6 +34,14 @@ if not (yaml and hasattr(yaml, "safe_dump")):
 from slugify import slugify
 import dateparser
 import openai
+try:
+    import yt_dlp
+except Exception:
+    yt_dlp = None
+try:
+    import whisper
+except Exception:
+    whisper = None
 try:
     from tqdm import tqdm               # 通常はこちらが使われる
 except (ImportError, AttributeError):
@@ -139,6 +149,55 @@ def chunk_text(text: str, max_chars: int = 4000):
                 chunks.append(s[i : i + max_chars])
 
     return chunks
+
+def is_youtube_url(url: str) -> bool:
+    netloc = urlparse(url).netloc.lower()
+    return "youtube.com" in netloc or "youtu.be" in netloc
+
+def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict]:
+    if yt_dlp is None:
+        raise RuntimeError("yt_dlp not available")
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
+        "restrictfilenames": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+    audio_path = out_dir / f"{info['id']}.{info['ext']}"
+    meta = {
+        "title": info.get("title") or "Untitled",
+        "publication_date": "",
+        "author_family": "",
+        "author_given": "",
+        "keywords": [],
+    }
+    upload_date = info.get("upload_date")
+    if upload_date and len(upload_date) == 8:
+        try:
+            dt = datetime.datetime.strptime(upload_date, "%Y%m%d").date()
+            meta["publication_date"] = dt.isoformat()
+        except Exception:
+            pass
+    return audio_path, meta
+
+def _transcribe_audio(path: pathlib.Path) -> tuple[str, str]:
+    if whisper is None:
+        raise RuntimeError("whisper not available")
+    model = whisper.load_model("base")
+    result = model.transcribe(str(path))
+    text = result.get("text", "").strip()
+    lang = result.get("language", "unknown")
+    return text, lang
+
+def process_youtube_url(url: str) -> tuple[dict, pathlib.Path]:
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="yt_"))
+    audio_path, meta = _download_youtube_audio(url, tmp)
+    text, lang = _transcribe_audio(audio_path)
+    meta["text"] = text
+    meta["source_language"] = lang
+    return meta, audio_path
 
 def translate_full(text: str) -> str:
     """Translate arbitrarily long texts to Japanese by chunking."""
@@ -427,10 +486,17 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
     error_entries = [] # collect (url, error_str)
     for url in tqdm(urls, desc="Processing"):
         try:
-            html  = fetch_html(url)
-            meta  = extract_meta(url, html)
-            card  = build_card(meta, url, access_date, skip_translation=skip_translation)
-            fp    = save_card(card, meta)
+            audio_temp = None
+            if is_youtube_url(url):
+                meta, audio_temp = process_youtube_url(url)
+            else:
+                html = fetch_html(url)
+                meta = extract_meta(url, html)
+            card = build_card(meta, url, access_date, skip_translation=skip_translation)
+            fp = save_card(card, meta)
+            if audio_temp:
+                dest = fp.with_suffix(audio_temp.suffix)
+                shutil.move(str(audio_temp), dest)
             rel = fp.relative_to(LIBRARY_DIR)
             new_entries.append((
                 meta["title"],
