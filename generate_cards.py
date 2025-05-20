@@ -164,8 +164,15 @@ def chunk_text(text: str, max_chars: int = 4000):
     return chunks
 
 def is_youtube_url(url: str) -> bool:
-    netloc = urlparse(url).netloc.lower()
-    return "youtube.com" in netloc or "youtu.be" in netloc
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    host = host.lower()
+    return (
+        host == "youtu.be"
+        or host == "youtube.com"
+        or host.endswith(".youtube.com")
+    )
 
 def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict, int]:
 

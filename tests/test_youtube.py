@@ -70,3 +70,15 @@ def test_process_youtube_temp_dir_removed(monkeypatch, tmp_path):
     generate_cards._process_urls(['https://youtu.be/xyz'])
 
     assert not tmp_audio_dir.exists()
+
+
+def test_is_youtube_url_positive():
+    assert generate_cards.is_youtube_url('https://www.youtube.com/watch?v=1')
+    assert generate_cards.is_youtube_url('https://youtu.be/xyz')
+    assert generate_cards.is_youtube_url('https://m.youtube.com/watch?v=1')
+
+
+def test_is_youtube_url_negative():
+    assert not generate_cards.is_youtube_url('https://notyoutube.com')
+    assert not generate_cards.is_youtube_url('https://youtube.com.evil.com')
+    assert not generate_cards.is_youtube_url('https://example.com/youtu.be/xyz')
