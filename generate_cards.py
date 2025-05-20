@@ -7,6 +7,12 @@ Cards are saved to ./Library/<NDC>_<label_en>/{YYYY-MM-DD-slug}.md
 import os, sys, json, datetime, pathlib, argparse, getpass
 import time
 from urllib.parse import urlparse
+import shutil
+import tempfile
+
+
+# Allow MPS backend to fall back to CPU op‑by‑op instead of raising errors
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import httpx
 import trafilatura
@@ -33,7 +39,23 @@ from slugify import slugify
 import dateparser
 import openai
 try:
-    from tqdm import tqdm               # 通常はこちらが使われる
+    import yt_dlp
+except Exception:
+    yt_dlp = None
+
+try:
+    import whisper
+except ImportError:
+    whisper = None
+
+try:
+    import torch
+except ImportError:
+    torch = None
+
+try:
+    from tqdm import tqdm  # 通常はこちらが使われる
+
 except (ImportError, AttributeError):
     # pytest などが空モジュールを上書きした場合でも落ちないようダミー定義
     def tqdm(iterable=None, *_, **__):
@@ -105,6 +127,26 @@ def extract_meta(url: str, html: str) -> dict:
         "text": d.get("text") or "",
     }
 
+# ---------- audio transcription helper -----------------------------------
+
+def _transcribe_audio(path: pathlib.Path) -> tuple[str, str]:
+    """Return ``(language, text)`` using Whisper on CUDA/MPS when available."""
+    if whisper is None:
+        raise RuntimeError("whisper not available")
+
+    device = "cpu"
+    if torch is not None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        else:
+            mps = getattr(torch.backends, "mps", None)
+            if mps and mps.is_available():
+                device = "mps"
+
+    model = whisper.load_model("base", device=device)
+    result = model.transcribe(str(path))
+    return result.get("language", ""), result.get("text", "").strip()
+
 # ---------- language & chunk helpers -------------------------------------
 
 def detect_lang(text: str) -> str:
@@ -139,6 +181,111 @@ def chunk_text(text: str, max_chars: int = 4000):
                 chunks.append(s[i : i + max_chars])
 
     return chunks
+
+def is_youtube_url(url: str) -> bool:
+    netloc = urlparse(url).netloc.lower()
+    return "youtube.com" in netloc or "youtu.be" in netloc
+
+def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Path, dict, int]:
+
+    if yt_dlp is None:
+        raise RuntimeError("yt_dlp not available")
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
+        "restrictfilenames": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+
+        duration = int(info.get("duration", 0))  # seconds
+
+    audio_path = out_dir / f"{info['id']}.{info['ext']}"
+    meta = {
+        "title": info.get("title") or "Untitled",
+        "publication_date": "",
+        "author_family": "",
+        "author_given": "",
+        "keywords": [],
+    }
+    upload_date = info.get("upload_date")
+    if upload_date and len(upload_date) == 8:
+        try:
+            dt = datetime.datetime.strptime(upload_date, "%Y%m%d").date()
+            meta["publication_date"] = dt.isoformat()
+        except Exception:
+            pass
+
+    return audio_path, meta, duration
+
+def _transcribe_audio(path: pathlib.Path, *, force_cpu: bool = False) -> tuple[str, str]:
+    """
+    Transcribe *path* with OpenAI Whisper.
+    VAD とループ抑止パラメータを有効化して繰り返し幻覚を低減。
+
+    Returns (text, language).  Device selection order:
+    CUDA → MPS → CPU unless `force_cpu` is True.
+    Any RuntimeError on CUDA/MPS triggers automatic CPU retry.
+    Long files are processed in one pass (manual chunking could be added later).
+    """
+    if whisper is None:
+        raise RuntimeError("whisper not available")
+
+    # build preferred‑device chain
+    device_chain: list[str] = []
+    if not force_cpu:
+        if torch is not None and torch.cuda.is_available():
+            device_chain.append("cuda")
+        if torch is not None and getattr(torch.backends, "mps", None) \
+           and torch.backends.mps.is_available():
+            device_chain.append("mps")
+    device_chain.append("cpu")  # always have CPU fallback
+
+    last_err: RuntimeError | None = None
+    for dev in device_chain:
+        try:
+            tqdm.write(f"[Whisper] loading model on {dev} …")
+            model = whisper.load_model("base", device=dev)
+            if dev == "mps":
+                model = model.float()           # FP32 only on MPS
+            fp16 = dev == "cuda"
+
+            # Decoding options to suppress repetition & skip silence
+            decode_opts = dict(
+                fp16=fp16,
+                compression_ratio_threshold=2.4,
+                logprob_threshold=-1.0,
+                no_speech_threshold=0.5,
+                condition_on_previous_text=False,
+                temperature=[0.0, 0.2, 0.4],   # fallback temperatures
+            )
+
+            result = model.transcribe(str(path), **decode_opts)
+            break  # success
+        except RuntimeError as e:
+            last_err = e
+            tqdm.write(f"[Whisper] {dev} failed → trying next device")
+            continue
+    else:
+        # exhausted all devices
+        raise last_err or RuntimeError("transcription failed")
+
+    text = result.get("text", "").strip()
+    lang = result.get("language", "unknown")
+    return text, lang
+
+def process_youtube_url(url: str) -> tuple[dict, pathlib.Path]:
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="yt_"))
+
+    audio_path, meta, dur = _download_youtube_audio(url, tmp)
+    # force CPU for videos longer than 30 min
+    force_cpu = dur > 30 * 60
+    text, lang = _transcribe_audio(audio_path, force_cpu=force_cpu)
+
+    meta["text"] = text
+    meta["source_language"] = lang
+    return meta, audio_path
 
 def translate_full(text: str) -> str:
     """Translate arbitrarily long texts to Japanese by chunking."""
@@ -427,10 +574,17 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
     error_entries = [] # collect (url, error_str)
     for url in tqdm(urls, desc="Processing"):
         try:
-            html  = fetch_html(url)
-            meta  = extract_meta(url, html)
-            card  = build_card(meta, url, access_date, skip_translation=skip_translation)
-            fp    = save_card(card, meta)
+            audio_temp = None
+            if is_youtube_url(url):
+                meta, audio_temp = process_youtube_url(url)
+            else:
+                html = fetch_html(url)
+                meta = extract_meta(url, html)
+            card = build_card(meta, url, access_date, skip_translation=skip_translation)
+            fp = save_card(card, meta)
+            if audio_temp:
+                dest = fp.with_suffix(audio_temp.suffix)
+                shutil.move(str(audio_temp), dest)
             rel = fp.relative_to(LIBRARY_DIR)
             new_entries.append((
                 meta["title"],

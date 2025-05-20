@@ -29,14 +29,17 @@ source venv/bin/activate      # Windows は .\venv\Scripts\activate
 
 # 本番 + 開発依存を一括インストール
 pip install -r requirements.txt -r requirements-dev.txt
+# YouTube URL を処理する場合、`yt-dlp` と `openai-whisper` もインストールされます。
 
 export OPENAI_API_KEY=sk-...  # または実行時に --key
 ```
 
 > **Codex CI での実行**
-> `scripts/setup.sh` がシステム Python を検知し、3.11 以外の場合は
-> `uv` 経由で **Python 3.11.9** (任意の 3.11.x) と仮想環境 `.venv/` を自動生成します。
+> `scripts/setup.sh` がシステム Python を検知し、3.8 未満の場合は
+> `uv` 経由で **Python 3.11** と仮想環境 `.venv/` を自動生成します。
 > ローカルでも同じ環境を再現したい場合は `bash scripts/setup.sh` を実行してください。
+
+Whisper を使用する音声書き起こしでは、CUDA 対応 GPU や Apple Silicon の MPS が利用可能な場合は自動でそちらを使用します。
 
 ## 使い方
 
@@ -49,9 +52,10 @@ python generate_cards.py https://example.com --key sk-...
 python generate_cards.py https://example.com --no-translate --key sk-...
 ```
 
-- 生成カードは `Library/` 以下に自動で振り分け  
+- 生成カードは `Library/` 以下に自動で振り分け
 - ダイジェストは `Library/_digests/` 以下に日付別保存
   - 最新版は `Library/_daily_digest.md` としてリンク/コピー
+- YouTube URL を指定した場合は音声を取得し、Whisper で文字起こし後にカード化
 
 ## フォルダ構成例
 
