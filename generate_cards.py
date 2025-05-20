@@ -568,6 +568,7 @@ def _process_urls(urls: list[str], skip_translation: bool = False):
             if audio_temp:
                 dest = fp.with_suffix(audio_temp.suffix)
                 shutil.move(str(audio_temp), dest)
+                shutil.rmtree(audio_temp.parent, ignore_errors=True)
             rel = fp.relative_to(LIBRARY_DIR)
             new_entries.append((
                 meta["title"],
