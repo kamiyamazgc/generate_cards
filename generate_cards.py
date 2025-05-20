@@ -127,25 +127,6 @@ def extract_meta(url: str, html: str) -> dict:
         "text": d.get("text") or "",
     }
 
-# ---------- audio transcription helper -----------------------------------
-
-def _transcribe_audio(path: pathlib.Path) -> tuple[str, str]:
-    """Return ``(language, text)`` using Whisper on CUDA/MPS when available."""
-    if whisper is None:
-        raise RuntimeError("whisper not available")
-
-    device = "cpu"
-    if torch is not None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        else:
-            mps = getattr(torch.backends, "mps", None)
-            if mps and mps.is_available():
-                device = "mps"
-
-    model = whisper.load_model("base", device=device)
-    result = model.transcribe(str(path))
-    return result.get("language", ""), result.get("text", "").strip()
 
 # ---------- language & chunk helpers -------------------------------------
 
@@ -218,6 +199,8 @@ def _download_youtube_audio(url: str, out_dir: pathlib.Path) -> tuple[pathlib.Pa
             pass
 
     return audio_path, meta, duration
+
+# ---------- audio transcription helper -----------------------------------
 
 def _transcribe_audio(path: pathlib.Path, *, force_cpu: bool = False) -> tuple[str, str]:
     """

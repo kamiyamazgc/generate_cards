@@ -11,9 +11,12 @@ def make_torch(cuda=False, mps=False):
 
 def make_whisper(record):
     class Model:
-        def transcribe(self, path):
+        def transcribe(self, path, **_):
             record['path'] = path
             return {'language': 'en', 'text': 'hi'}
+
+        def float(self):
+            return self
 
     def load_model(name, device):
         record['device'] = device
