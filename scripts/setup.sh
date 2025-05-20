@@ -6,8 +6,8 @@ USE_PIP=false
 
 # -----------------------------------------------------------------------------
 # Setup script for Codex sandbox:
-# 1. Guarantees a modern Python (>=3.8). If the base image only has 3.7,
-#    we download a standalone 3.11 and create a virtualenv with `uv`.
+# 1. Guarantees Python 3.11. If the base image uses another version,
+#    we download a standalone 3.11.x and create a virtualenv with `uv`.
 # 2. Installs all project dependencies (runtime + dev) via `uv pip`.
 # -----------------------------------------------------------------------------
 
@@ -27,19 +27,19 @@ fi
 
 
 
-# 2) If system Python is <3.8, bootstrap Python 3.11 into .venv
+# 2) If the active Python is not 3.11.x, bootstrap Python 3.11.9 into .venv
 if python - <<'PY'
-import sys; sys.exit(0 if sys.version_info >= (3,8) else 1)
+import sys; sys.exit(0 if sys.version_info[:2] == (3,11) else 1)
 PY
 then
   echo "✅ Using system $(python -V)"
 else
   if [ "$USE_PIP" = false ]; then
-    echo "⏬ System Python too old; installing standalone 3.11 via uv"
-    uv venv --python 3.11 .venv
+    echo "⏬ System Python not 3.11; installing standalone 3.11.9 via uv"
+    uv venv --python 3.11.9 .venv
     source .venv/bin/activate
   else
-    echo "⚠️  System Python too old and uv unavailable; using system Python"
+    echo "⚠️  Python version not 3.11 and uv unavailable; using system Python"
   fi
 fi
 
